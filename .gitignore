@@ -1,0 +1,5 @@
+.venv/
+.vscode/
+*.cer
+config.ini
+config.key

@@ -1,0 +1,188 @@
+= AppD DBViz to Analytics sync
+:description: Extension for AppDynamics to sync DB queries from DBViz to Analytics
+:url-repo: https://github.com/bfrevel/appd-migrate-db-stats-to-analytics
+:toc:
+
+
+
+== Use case
+
+AppDynamics DB Monitoring data are not available in Analytics. This script synchronizes data from DB Monitoring to Analytics.
+
+
+
+== Installation
+
+
+.Create environment
+[source, sh]
+----
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+----
+
+
+== Configuration
+
+=== Config File
+
+.Create the config file
+[source, sh]
+----
+cat <<EOT > config.ini
+[default]
+
+[controller-api]
+url = https://bfrevel.saas.appdynamics.com
+client_id = dbsync@bfrevel
+client_secret = encrypted:...
+ssl_verify = Cert_AppD.cer
+
+
+[database-ui-api]
+db_config_id = 1918
+db_server_id = -1
+db_config_size = 10
+
+[events-service-api]
+url = https://fra-ana-api.saas.appdynamics.com
+account_name = bfrevel_...
+api_key = encrypted:...
+ssl_verify = Cert_AppD.cer
+schema = db_data
+EOT
+----
+
+
+=== Properties
+
+[%autowidth, cols="1m,1m,1"]
+|===
+|section |property |description
+
+|controller-api
+|url
+|URL to the controller to read the db stats from
+
+|
+|client_id
+|The API client id
+
+https://docs.appdynamics.com/appd/24.x/latest/en/extend-cisco-appdynamics/cisco-appdynamics-apis/api-clients#id-.APIClientsv24.3-CreateAPIClientsCreate_API_Client
+
+|
+|client_secret
+|The client secret. Can be encrypted (see key encryption). If the key is encrypted, the format has to be `encrypted:<encrypted-key>`
+
+|
+|ssl_verify
+|(optional) Path to the certificate
+
+
+
+|database-ui-api
+|db_config_id
+|The config id (check on Controller GUI, which config id is used)
+
+|
+|db_server_id
+|The server id (check on Controller GUI, which server id is used)
+
+|
+|db_config_size
+|search for TOP *db_config_size* queries
+
+
+
+|events-service-api
+|url
+|Your Analytics URL. Check https://docs.appdynamics.com/paa/en/cisco-appdynamics-saas-domains-and-ip-ranges for saas instances. 
+
+|
+|account_name
+|AppDynamics Global Account Name. Check on your Controller / Licenses. 
+
+
+|
+|api_key
+a|Key of the API user. https://docs.appdynamics.com/appd/24.x/24.5/en/analytics/deploy-analytics-with-the-analytics-agent/analytics-and-data-security/manage-api-keys#id-.ManageAPIKeysv24.3-CreateAPIKeys
+
+
+IMPORTANT: The API user needs the permission to query and publish events to the Custom Analytics Events Schemas, defined in `events-service-api.schema`
+
+|
+|ssl_verify
+|(optional) Path to the certificate
+
+|
+|schema
+|Target Schema, to which the information will get published. 
+
+|===
+
+
+
+
+=== Create Event Schema in AppDynamics
+
+doc: https://docs.appdynamics.com/appd/24.x/latest/en/extend-cisco-appdynamics/cisco-appdynamics-apis/analytics-events-api#id-.AnalyticsEventsAPIv24.3-create_schemaCreateEventSchema
+
+[source]
+----
+POST http://analytics.api.example.com/events/schema/<schemaName> HTTP/1.1
+X-Events-API-AccountName:<global_account_name>
+X-Events-API-Key:<api_key>
+Content-Type: application/vnd.appd.events+json;v=2
+Accept: application/vnd.appd.events+json;v=2
+{
+    "schema": {
+        "queryHashCode": "String",
+        "queryText": "String",
+        "hits": "Integer",
+        "weight": "Float"
+    }
+}
+----
+
+
+
+=== Create key file to encrpyt passwords in properties
+
+.Create the encryption key
+[source, python]
+----
+from cryptography.fernet import Fernet
+
+key = Fernet.generate_key()
+
+with open('config.key', 'wb') as config_key:
+   config_key.write(key)
+----
+
+.Encrypt the password
+[source, sh]
+----
+from cryptography.fernet import Fernet
+
+with open('config.key', 'rb') as config_key:
+    line = config_key.read()
+
+key = Fernet(line)
+
+key.encrypt(b'my-security-key')
+----
+
+
+
+
+
+
+== Execute the extension
+
+.Run
+[source, sh]
+----
+.venv/bin/python appd-migrate-db-stats-to-analytics.py
+----
